@@ -27,6 +27,31 @@
 #' sd(Steps4)
 #' plot(Steps4)
 
+.timing_env <- new.env()
+
+.timing_env$start_total <- Sys.time()
+.timing_env$last_step <- Sys.time()
+
+trace_time <- function(message) {
+  current_time <- Sys.time()
+  
+  # Calculate time since the last trace_time call (or script start for the first call)
+  step_duration <- current_time - .timing_env$last_step
+  
+  # Calculate total time since the initial setup
+  total_duration <- current_time - .timing_env$start_total
+  
+  # Print the timing information neatly
+  cat(sprintf("--- Timing Trace --- %s\n", message))
+  # Use as.numeric to get the duration value, attr for the units (usually "secs")
+  cat(sprintf("  Step Duration: %.3f %s\n", as.numeric(step_duration), attr(step_duration, "units")))
+  cat(sprintf("  Total Elapsed: %.3f %s\n", as.numeric(total_duration), attr(total_duration, "units")))
+  cat("--------------------\n")
+  
+  # Update the last step time for the next calculation
+  .timing_env$last_step <- current_time
+}
+
 stepCounter <- function(AccData, 
                         samplefreq = 100,
                         filterorder = 2,
@@ -77,27 +102,87 @@ stepCounter <- function(AccData,
   #### Apply the band pass filter ####
   filteredData = signal::filter(Filter, StepData) 
   
-  state = -1                                                       # initialise step state
-  interval = 0                                                     # initialise the interval counter
-  cadence = numeric(0)                                             # initialise first element of array for intervals
-  samples = length(filteredData)                                   # loop through all samples
+  # --- Start of Replacement for the slow loop ---
   
-  for (a in 1:samples) {
-    if ((filteredData[a] > hysteresis) && (state < 0)){            # new step started
-      state = 1                                                    # set the state
-      cadence[length(cadence)] = interval + 1                      # write the step interval
-      cadence[length(cadence) + 1] = 0                             # initialise to record the next step    
-      interval = 0                                                 # reset the step counter
-    } else if ((-1*filteredData[a] > hysteresis) && (state > 0)) { # hysteresis reset condition met
-      state = -1                                                   # reset the state
-      interval = interval + 1                                      # increment the interval
+  samples <- length(filteredData)
+  
+  # 1. Determine the zone for each point: -1 (below), 0 (between), 1 (above)
+  #    Using integers (1L, -1L, 0L) can be slightly more efficient
+  zone <- ifelse(filteredData > hysteresis, 1L, 
+                 ifelse(filteredData < -hysteresis, -1L, 0L))
+  
+  # 2. Find where the zone changes compared to the previous point
+  #    Create a 'lagged' version of the zone vector. Assume starts in zone 0 or -1 
+  #    (similar to original loop starting with state = -1, let's assume 0 is safe default)
+  prev_zone <- c(0L, zone[-samples]) 
+  
+  # 3. Identify the exact indices where a transition *into* the target zone occurs
+  #    Enters zone 1 (crossed +hysteresis upwards)
+  enters_pos_zone_idx <- which(zone == 1L & prev_zone != 1L)
+  #    Enters zone -1 (crossed -hysteresis downwards)
+  enters_neg_zone_idx <- which(zone == -1L & prev_zone != -1L)
+  
+  # 4. Combine and sort all relevant transition events by their index
+  if (length(enters_pos_zone_idx) > 0 || length(enters_neg_zone_idx) > 0) {
+    
+    events <- data.frame(
+      idx = c(enters_pos_zone_idx, enters_neg_zone_idx),
+      type = rep(c(1L, -1L), c(length(enters_pos_zone_idx), length(enters_neg_zone_idx)))
+    )
+    events <- events[order(events$idx), , drop = FALSE]
+    
+    # 5. Find the 'up' events (type 1) that immediately follow a 'down' event (type -1)
+    #    This implements the hysteresis logic: count 'up' only after a 'down'
+    prev_event_type <- c(0L, events$type[-nrow(events)]) # Type of the *previous event*
+    
+    # Indices of the valid step start points (upward crossing after a downward one)
+    valid_step_start_indices <- events$idx[events$type == 1L & prev_event_type == -1L]
+    
+    # 6. Calculate durations between consecutive valid step starts
+    if (length(valid_step_start_indices) > 1) {
+      cadence_samples <- diff(valid_step_start_indices)
     } else {
-      interval = interval + 1                                      # increment the interval
+      cadence_samples <- numeric(0) # No complete steps found
     }
-    cadence[length(cadence)] = interval                            # capture last part step
+    
+  } else {
+    # No threshold crossings at all
+    valid_step_start_indices <- numeric(0)
+    cadence_samples <- numeric(0)
   }
   
-  cadence = cadence/samplefreq                                     # divide by the sample frequency to get seconds
+  # 7. Convert durations to seconds
+  cadence <- cadence_samples / samplefreq
+  
+  # --- End of Replacement ---
+  
+  # state = -1                                                       # initialise step state
+  # interval = 0                                                     # initialise the interval counter
+  # cadence = numeric(0)                                             # initialise first element of array for intervals
+  # samples = length(filteredData)                                   # loop through all samples
+  # 
+  # for (a in 1:samples) {
+  #   if ((filteredData[a] > hysteresis) && (state < 0)){            # new step started
+  #     state = 1                                                    # set the state
+  #     cadence[length(cadence)] = interval + 1                      # write the step interval
+  #     cadence[length(cadence) + 1] = 0                             # initialise to record the next step    
+  #     interval = 0                                                 # reset the step counter
+  #   } else if ((-1*filteredData[a] > hysteresis) && (state > 0)) { # hysteresis reset condition met
+  #     state = -1                                                   # reset the state
+  #     interval = interval + 1                                      # increment the interval
+  #   } else {
+  #     interval = interval + 1                                      # increment the interval
+  #   }
+  #   cadence[length(cadence)] = interval                            # capture last part step
+  #   
+  #   print(paste0("--- INTERVAL --- # ", a))
+  #   print(cadence)
+  #   
+  #   print(paste0("--- CADENCE --- # ", a))
+  #   print(cadence)
+  # }
+  # 
+  # cadence = cadence/samplefreq                                     # divide by the sample frequency to get seconds
   
   if ("GENEAcount" %in% fun) {
     res["GENEAcount"] <- length(cadence)
