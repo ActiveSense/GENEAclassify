@@ -102,7 +102,9 @@ stepCounter <- function(AccData,
   #### Apply the band pass filter ####
   filteredData = signal::filter(Filter, StepData) 
   
-  # --- Start of Replacement for the slow loop ---
+  # ==================================
+  # NEW IMPLEMENTATION
+  # ==================================
   
   samples <- length(filteredData)
   
@@ -154,7 +156,9 @@ stepCounter <- function(AccData,
   # 7. Convert durations to seconds
   cadence <- cadence_samples / samplefreq
   
-  # --- End of Replacement ---
+  # ==================================
+  # OLD IMPLEMENTATION (TOO SLOW)
+  # ==================================
   
   # state = -1                                                       # initialise step state
   # interval = 0                                                     # initialise the interval counter

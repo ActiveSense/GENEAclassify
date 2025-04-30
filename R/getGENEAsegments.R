@@ -134,8 +134,6 @@ getGENEAsegments <- function(testfile,
                              verbose = FALSE,
                              ...) {
   
-  print("IS THIS WORKING ACCORDINGLY?")
-  
   #### 1.0 Error Catching ####
   if (!(length(verbose) == 1 && is.logical(verbose))) { stop("verbose should be a single logical") }
   
