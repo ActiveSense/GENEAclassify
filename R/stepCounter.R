@@ -107,54 +107,59 @@ stepCounter <- function(AccData,
   # ==================================
   
   samples <- length(filteredData)
-  
-  # 1. Determine the zone for each point: -1 (below), 0 (between), 1 (above)
-  #    Using integers (1L, -1L, 0L) can be slightly more efficient
-  zone <- ifelse(filteredData > hysteresis, 1L, 
+
+  zone <- ifelse(filteredData > hysteresis, 1L,
                  ifelse(filteredData < -hysteresis, -1L, 0L))
-  
-  # 2. Find where the zone changes compared to the previous point
-  #    Create a 'lagged' version of the zone vector. Assume starts in zone 0 or -1 
-  #    (similar to original loop starting with state = -1, let's assume 0 is safe default)
-  prev_zone <- c(0L, zone[-samples]) 
-  
-  # 3. Identify the exact indices where a transition *into* the target zone occurs
-  #    Enters zone 1 (crossed +hysteresis upwards)
+
+  prev_zone <- c(0L, zone[-samples])
+
   enters_pos_zone_idx <- which(zone == 1L & prev_zone != 1L)
-  #    Enters zone -1 (crossed -hysteresis downwards)
   enters_neg_zone_idx <- which(zone == -1L & prev_zone != -1L)
+
+  N_actual_step_starts <- 0
+  cadence_for_stats_seconds <- numeric(0)
   
-  # 4. Combine and sort all relevant transition events by their index
   if (length(enters_pos_zone_idx) > 0 || length(enters_neg_zone_idx) > 0) {
-    
+
     events <- data.frame(
       idx = c(enters_pos_zone_idx, enters_neg_zone_idx),
       type = rep(c(1L, -1L), c(length(enters_pos_zone_idx), length(enters_neg_zone_idx)))
     )
     events <- events[order(events$idx), , drop = FALSE]
+
+    simulated_state <- -1L 
+    valid_step_start_indices <- numeric(0) 
     
-    # 5. Find the 'up' events (type 1) that immediately follow a 'down' event (type -1)
-    #    This implements the hysteresis logic: count 'up' only after a 'down'
-    prev_event_type <- c(0L, events$type[-nrow(events)]) # Type of the *previous event*
-    
-    # Indices of the valid step start points (upward crossing after a downward one)
-    valid_step_start_indices <- events$idx[events$type == 1L & prev_event_type == -1L]
-    
-    # 6. Calculate durations between consecutive valid step starts
-    if (length(valid_step_start_indices) > 1) {
-      cadence_samples <- diff(valid_step_start_indices)
-    } else {
-      cadence_samples <- numeric(0) # No complete steps found
+    for (i in 1:nrow(events)) {
+      current_event_idx <- events$idx[i]
+      current_event_type <- events$type[i]
+      
+      if (current_event_type == 1L) { 
+        if (simulated_state == -1L) {
+          valid_step_start_indices <- c(valid_step_start_indices, current_event_idx)
+          simulated_state <- 1L 
+        }
+      } else { 
+        if (simulated_state == 1L) {
+          simulated_state <- -1L
+        }
+      }
     }
     
-  } else {
-    # No threshold crossings at all
-    valid_step_start_indices <- numeric(0)
-    cadence_samples <- numeric(0)
+    N_actual_step_starts <- length(valid_step_start_indices)
+    
+    if (N_actual_step_starts > 0) { 
+      completed_cycle_durations_samples <- numeric(0)
+      if (N_actual_step_starts > 1) {
+        completed_cycle_durations_samples <- diff(valid_step_start_indices)
+      }
+      
+      last_phase_duration_samples <- samples - valid_step_start_indices[N_actual_step_starts]
+      
+      all_cycle_durations_samples <- c(completed_cycle_durations_samples, last_phase_duration_samples)
+      cadence_for_stats_seconds <- all_cycle_durations_samples / samplefreq
+    }
   }
-  
-  # 7. Convert durations to seconds
-  cadence <- cadence_samples / samplefreq
   
   # ==================================
   # OLD IMPLEMENTATION (TOO SLOW)
@@ -169,7 +174,7 @@ stepCounter <- function(AccData,
   #   if ((filteredData[a] > hysteresis) && (state < 0)){            # new step started
   #     state = 1                                                    # set the state
   #     cadence[length(cadence)] = interval + 1                      # write the step interval
-  #     cadence[length(cadence) + 1] = 0                             # initialise to record the next step    
+  #     cadence[length(cadence) + 1] = 0                             # initialise to record the next step
   #     interval = 0                                                 # reset the step counter
   #   } else if ((-1*filteredData[a] > hysteresis) && (state > 0)) { # hysteresis reset condition met
   #     state = -1                                                   # reset the state
@@ -178,43 +183,37 @@ stepCounter <- function(AccData,
   #     interval = interval + 1                                      # increment the interval
   #   }
   #   cadence[length(cadence)] = interval                            # capture last part step
-  #   
-  #   print(paste0("--- INTERVAL --- # ", a))
-  #   print(cadence)
-  #   
-  #   print(paste0("--- CADENCE --- # ", a))
-  #   print(cadence)
   # }
   # 
   # cadence = cadence/samplefreq                                     # divide by the sample frequency to get seconds
   
   if ("GENEAcount" %in% fun) {
-    res["GENEAcount"] <- length(cadence)
+    res["GENEAcount"] <- N_actual_step_starts
     fun <- fun[fun != "GENEAcount"]
   }
   
   if ("mean" %in% fun) {
-    if (length(cadence) < 2){
+    if (length(cadence_for_stats_seconds) < 2){
       res["mean"] <- 0
       fun <- fun[fun != "mean"]
     } else {
-      res["mean"] <- 60 / mean(cadence, na.rm = T)
+      res["mean"] <- 60 / mean(cadence_for_stats_seconds, na.rm = T)
       fun <- fun[fun != "mean"]
     }
   }
   
   if ("median" %in% fun) {
-    if (length(cadence) < 2){
+    if (length(cadence_for_stats_seconds) < 2){
       res["median"] <- 0
       fun <- fun[fun != "median"]
     } else {
-      res["median"] <- 60 / median(cadence, na.rm = T)
+      res["median"] <- 60 / median(cadence_for_stats_seconds, na.rm = T)
       fun <- fun[fun != "median"]
     }
   }
   
   for (i in fun) {
-    val <- try(get(x = i, mode = "function")(diff(cadence)))
+    val <- try(get(x = i, mode = "function")(diff(cadence_for_stats_seconds)))
     if (is(val, class2 = "try-error")) { val <- 0 }
     if (is.na(val)) { val <- 0 }
     res[i] <- val

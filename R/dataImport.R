@@ -32,7 +32,7 @@ dataImport = function(binfile,
                       Use.Timestamps = FALSE, 
                       radians = FALSE,
                       keep_raw_data = TRUE,
-                      mmap.load = (.Machine$sizeof.pointer >= 8), ...) {
+                      mmap.load = (.Machine$sizeof.pointer >= 8), pagerefs, ...) {
 
   # Note to bring everything to binfile name change. - To be removed
   if (missing(binfile)){stop("bindata has been renamed as binfile. Please rename variable")}
@@ -45,7 +45,8 @@ dataImport = function(binfile,
                              Use.Timestamps = Use.Timestamps, 
                              mmap.load = mmap.load,
                              calibrate = TRUE,
-                             downsample = 1)
+                             downsample = 1,
+                             pagerefs = pagerefs)
     
     RawData = binaryDataOut$data.out
   }
@@ -63,7 +64,8 @@ dataImport = function(binfile,
                           Use.Timestamps = Use.Timestamps, 
                           mmap.load = mmap.load,
                           calibrate = TRUE, 
-                          downsample = downsample)
+                          downsample = downsample,
+                          pagerefs = pagerefs)
     
     binaryDataOut = binaryData$data.out
    }
