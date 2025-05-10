@@ -132,9 +132,8 @@ getGENEAsegments <- function(testfile,
                              plot_changepoints = FALSE,
                              plot_changepoints_outputfile = "Changepoint",
                              verbose = FALSE,
+                             pagerefs = TRUE,
                              ...) {
-  
-  print("IS THIS WORKING ACCORDINGLY?")
   
   #### 1.0 Error Catching ####
   if (!(length(verbose) == 1 && is.logical(verbose))) { stop("verbose should be a single logical") }
@@ -272,7 +271,7 @@ getGENEAsegments <- function(testfile,
                             Use.Timestamps = Use.Timestamps,
                             radians = radians,
                             keep_raw_data = keep_raw_data,
-                            mmap.load = mmap.load, ...))
+                            mmap.load = mmap.load, pagerefs = pagerefs, ...))
     
     #### 4.0 Setting sample frequency here ####
     if (missing(inDat)) { stop("data is missing") }
