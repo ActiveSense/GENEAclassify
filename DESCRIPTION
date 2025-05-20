@@ -1,7 +1,7 @@
 Package: GENEAclassify
 Type: Package
 Title: Segmentation and Classification of Accelerometer Data
-Version: 1.5.5-activesense
+Version: 1.5.5
 Date: 2024-02-07
 Authors@R: c(
             person("Chris", "Campbell", role = "aut", email = "ccampbell@mango-solutions.com"),
