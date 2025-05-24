@@ -31,5 +31,5 @@ VignetteBuilder: knitr
 NeedsCompilation: yes
 Packaged: 2024-02-08 09:10:29 UTC; JiaYingChua
 Maintainer: Jia Ying Chua <jiayingc@activinsights.com>
-Repository: CRAN
+Repository: ActiveSense
 Date/Publication: 2024-02-19 19:30:02 UTC
